@@ -865,6 +865,8 @@ class StableDiffusionXLPipeline(
         ## added for up block trans
         apply_filter: bool = False,
         filter_factor: float = 1.2,
+        ## added for down block trans
+        saliency_fft: bool = False,
         **kwargs,
     ):
         r"""
@@ -1235,6 +1237,8 @@ class StableDiffusionXLPipeline(
                     ## added for up block trans
                     apply_filter=apply_filter,
                     filter_factor=filter_factor,
+                    ## added for down blocks trans
+                    saliency_fft=saliency_fft
                 )
                 if return_hidden_:
                     noise_pred, hiddens = noise_pred

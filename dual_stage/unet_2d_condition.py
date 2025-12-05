@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
+from optparse import Option
 from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np 
 import torch
@@ -1040,38 +1041,38 @@ class UNet2DConditionModel(
     
     #  C3 implementation
     def remove_noise_with_fourier(self, sample, cutoff_freq, amp_factor):
-            # Apply N-dimensional Fourier transform to the sample (no padding) 
-            # print("cutoff freq", cutoff_freq)
-            # print("amp_factor", amp_factor)
-            # print("dtype", sample.dtype)
-            if sample.shape[-3]==0: return sample
-            sample_fft = torch.fft.fftn(sample.float())  # Perform FFT on N-dimensional tensor
-            # print("fft shape", sample_fft.shape)
-            sample_fft_shifted = torch.fft.fftshift(sample_fft)  # Shift zero freq to the center
-            # print("fft shifted shape", sample_fft_shifted.shape)
+        # Apply N-dimensional Fourier transform to the sample (no padding) 
+        # print("cutoff freq", cutoff_freq)
+        # print("amp_factor", amp_factor)
+        # print("dtype", sample.dtype)
+        if sample.shape[-3]==0: return sample
+        sample_fft = torch.fft.fftn(sample.float())  # Perform FFT on N-dimensional tensor
+        # print("fft shape", sample_fft.shape)
+        sample_fft_shifted = torch.fft.fftshift(sample_fft)  # Shift zero freq to the center
+        # print("fft shifted shape", sample_fft_shifted.shape)
 
-            # Create a low-pass filter mask based on the cutoff frequency
-            b, c, h, w = sample.shape
-            x = torch.arange(-w//2, w//2, device=sample.device).unsqueeze(0).expand(h, -1)
-            y = torch.arange(-h//2, h//2, device=sample.device).unsqueeze(1).expand(-1, w)
-            radius = torch.sqrt(x**2 + y**2)
+        # Create a low-pass filter mask based on the cutoff frequency
+        b, c, h, w = sample.shape
+        x = torch.arange(-w//2, w//2, device=sample.device).unsqueeze(0).expand(h, -1)
+        y = torch.arange(-h//2, h//2, device=sample.device).unsqueeze(1).expand(-1, w)
+        radius = torch.sqrt(x**2 + y**2)
 
-            # Create a mask with 1s in the low frequency area, 0s in the high frequency
-            mask = (radius < cutoff_freq).float().unsqueeze(0)  # Shape [1, h, w]
-            mask = mask.expand(c, -1, -1)  # Broadcast the mask to shape [c, h, w]
-            mask = mask.expand(b, -1, -1, -1)  # Broadcast the mask to shape [c, h, w]
-            # print("mask shape", mask.sum())
-            # Apply the mask to the Fourier transformed image
-            # High-frequency components (mask=0) become zero
-            # Low-frequency components (mask=1) are multiplied by amplification factor
-            sample_fft_filtered = sample_fft_shifted * (1-mask) + sample_fft_shifted * mask * (amp_factor)
-            # sample_fft_filtered = sample_fft_shifted * mask * (amp_factor)
+        # Create a mask with 1s in the low frequency area, 0s in the high frequency
+        mask = (radius < cutoff_freq).float().unsqueeze(0)  # Shape [1, h, w]
+        mask = mask.expand(c, -1, -1)  # Broadcast the mask to shape [c, h, w]
+        mask = mask.expand(b, -1, -1, -1)  # Broadcast the mask to shape [c, h, w]
+        # print("mask shape", mask.sum())
+        # Apply the mask to the Fourier transformed image
+        # High-frequency components (mask=0) become zero
+        # Low-frequency components (mask=1) are multiplied by amplification factor
+        sample_fft_filtered = sample_fft_shifted * (1-mask) + sample_fft_shifted * mask * (amp_factor)
+        # sample_fft_filtered = sample_fft_shifted * mask * (amp_factor)
 
-            # Inverse shift and inverse Fourier transform to get the modified image
-            sample_fft_ishifted = torch.fft.ifftshift(sample_fft_filtered)
-            denoised_sample = torch.fft.ifftn(sample_fft_ishifted).real  # Inverse FFT and take real part
+        # Inverse shift and inverse Fourier transform to get the modified image
+        sample_fft_ishifted = torch.fft.ifftshift(sample_fft_filtered)
+        denoised_sample = torch.fft.ifftn(sample_fft_ishifted).real  # Inverse FFT and take real part
 
-            return denoised_sample.to(sample.dtype)
+        return denoised_sample.to(sample.dtype)
     
     #####################
     # applg DoG to up blocks
@@ -1100,6 +1101,10 @@ class UNet2DConditionModel(
         # ensure all thetas are torch.Tensors on GPU
         thetas = [torch.tensor(t, device=device).float() for t in
                 [0, torch.pi/4, torch.pi/2, 3*torch.pi/4]]
+        
+        # thetas = [torch.tensor(t, device=device).float() for t in
+        #     [0, torch.pi/8, torch.pi/4, 3*torch.pi/8,
+        #     torch.pi/2, 5*torch.pi/8, 3*torch.pi/4, 7*torch.pi/8]]
 
         out = torch.zeros_like(sample)
 
@@ -1126,6 +1131,93 @@ class UNet2DConditionModel(
 
         out = out / len(thetas)
         return sample + filter_factor * out
+    
+    ##################################
+    ## adaptive mask
+    ##################################
+    
+    def compute_saliency_from_grad(self, sample):
+        """
+        sample: [B, C, H, W] in [-1, 1] or [0, 1]
+        return: [B, 1, H, W], values in [0, 1]
+        """
+        b, c, h, w = sample.shape
+        device = sample.device
+        dtype = sample.dtype
+
+        # to gray
+        gray = sample.mean(dim=1, keepdim=True)  # [B,1,H,W]
+
+        # Sobel kernel
+        sobel_x = torch.tensor([[-1, 0, 1],
+                                [-2, 0, 2],
+                                [-1, 0, 1]], device=device, dtype=dtype).view(1, 1, 3, 3)
+        sobel_y = torch.tensor([[-1, -2, -1],
+                                [ 0,  0,  0],
+                                [ 1,  2,  1]], device=device, dtype=dtype).view(1, 1, 3, 3)
+
+        # conpute gradient
+        gx = F.conv2d(gray, sobel_x, padding=1)
+        gy = F.conv2d(gray, sobel_y, padding=1)
+
+        grad_mag = torch.sqrt(gx ** 2 + gy ** 2)  # [B,1,H,W]
+
+        # nomarlize [0,1]
+        eps = 1e-6
+        min_val = grad_mag.amin(dim=(2,3), keepdim=True)
+        max_val = grad_mag.amax(dim=(2,3), keepdim=True)
+        saliency = (grad_mag - min_val) / (max_val - min_val + eps)
+
+        return saliency
+
+    def remove_noise_with_fourier_adaptive(self, sample, saliency, cutoff_freq, amp_factor):
+        """
+        sample:   Tensor [B, C, H, W]
+        saliency: Tensor [B, 1, H, W], values in [0,1]
+                1 → keep original (high-saliency)
+                0 → apply FFT denoising (low-saliency)
+        """
+
+        assert sample.ndim == 4 and saliency.ndim == 4
+        assert saliency.shape[0] == sample.shape[0]
+
+        device = sample.device
+        b, c, h, w = sample.shape
+
+        # Global FFT
+        sample_fft = torch.fft.fftn(sample.float(), dim=(-2, -1))
+        sample_fft_shifted = torch.fft.fftshift(sample_fft, dim=(-2, -1))
+
+        # Build low-pass mask
+        y, x = torch.meshgrid(
+            torch.arange(-h//2, h//2, device=device).float(),
+            torch.arange(-w//2, w//2, device=device).float(),
+            indexing="ij",
+        )
+        radius = torch.sqrt(x * x + y * y)
+
+        mask = (radius < cutoff_freq).float()
+        mask = mask.unsqueeze(0).unsqueeze(0)                    # [1,1,H,W]
+        mask = mask.expand(b, c, h, w)                           # [B,C,H,W]
+
+        # Apply frequency edit
+        sample_fft_filtered = sample_fft_shifted * (1-mask) + sample_fft_shifted * mask * amp_factor
+
+        # Back to spatial domain
+        sample_fft_ishifted = torch.fft.ifftshift(sample_fft_filtered, dim=(-2, -1))
+        denoised_sample = torch.fft.ifftn(sample_fft_ishifted, dim=(-2, -1)).real
+        denoised_sample = denoised_sample.to(sample.dtype)
+
+        # 📌 Spatial gating using saliency map
+        saliency = saliency.clamp(0, 1).to(sample.dtype)
+        if saliency.shape[1] == 1:
+            saliency = saliency.expand(-1, c, -1, -1)
+
+        # 👇 Combine selectively by saliency
+        result = sample * saliency + denoised_sample * (1 - saliency)
+
+        return result
+    
            
     def forward(
         self,
@@ -1149,7 +1241,8 @@ class UNet2DConditionModel(
         replace_on: Optional[Union[Dict[str, List[int]], str]] = None,
         cutoff_freq: Optional[float] = 5.0,
         apply_filter: Optional[bool] = False,
-        filter_factor: Optional[float] = 5.0,
+        filter_factor: Optional[float] = 2.0,
+        saliency_fft: Optional[bool] = False,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
         The [`UNet2DConditionModel`] forward method.
@@ -1347,7 +1440,13 @@ class UNet2DConditionModel(
                 elif (isinstance(replace_on, str) and replace_on == 'freq') and replace_mask_!=1.0:
                     print("apply fft on low, replace_mask: ", replace_mask_)
                     cutoff_freq_ = cutoff_freq if isinstance(cutoff_freq, float) else cutoff_freq['down'][di]
-                    sample = self.remove_noise_with_fourier(sample, cutoff_freq_, replace_mask_)
+                    # dual stage: apply adptive saliency
+                    if saliency_fft:
+                        print("apply saliencyon down blocks")
+                        saliency = self.compute_saliency_from_grad(sample)
+                        sample = self.remove_noise_with_fourier_adaptive(sample, saliency, cutoff_freq_, replace_mask_)
+                    else:
+                        sample = self.remove_noise_with_fourier(sample, cutoff_freq_, replace_mask_)
                     # print(cutoff_freq_, replace_mask_)
 
                     
