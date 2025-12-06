@@ -14,7 +14,7 @@ Recent text-to-image generative models, particularly Stable Diffusion and its di
 
 ```
 conda env create -f environment.yaml
-conda activate dftd
+conda activate C3
 ```
 
 <!-- 2) You need to use CLIP code from "https://github.com/openai/CLIP":
