@@ -102,3 +102,40 @@ class Generator():
             image.save(save_path)
         
         return image
+    
+    def dual_stage(self, seed, prompt, replace_mask, save_path='', cutoff=5.0, apply_filter=True, filter_factor=0.8, saliency_fft=True):
+        set_seed(seed)
+        if 'turbo' in self.model_name or 'light-1' in self.model_name:
+            c3_step = 1
+        elif 'light-4' in self.model_name:
+            c3_step = 4
+        elif self.model_name == 'sdxl':
+            c3_step = 50
+        empty_mask = [[] for i in range(7)]
+        empty_mask = fold_mask(empty_mask)
+        dummy_mask = {t: empty_mask for t in range(c3_step)}
+        # prompt = "a creative chair"
+        if isinstance(cutoff, float):
+            cutoff = [cutoff]*4 + [1.0]*3
+
+        cutoff = fold_mask(cutoff)
+
+        replace_mask_ = fold_mask(replace_mask)
+
+        params = {'prompt': prompt, 'replace_mask':replace_mask_, 'hidden_mask': dummy_mask, 'replace_on':'freq', 'cutoff_freq': cutoff, 'apply_filter': apply_filter, 'filter_factor': filter_factor, 'saliency_fft': saliency_fft}
+        if 'turbo' in self.model_name or 'light' in self.model_name:
+            params['guidance_scale'] = 0.0
+        if 'turbo' in self.model_name or 'light-1' in self.model_name:
+            params['num_inference_steps'] = 1
+        elif 'light-4' in self.model_name:
+            params['num_inference_steps'] = 4
+
+        out = self.model(
+            **params
+        )
+
+        image = out[0].images[0]
+        if save_path != '':
+            image.save(save_path)
+        
+        return image
