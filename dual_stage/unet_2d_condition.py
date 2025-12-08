@@ -1113,21 +1113,21 @@ class UNet2DConditionModel(
             torch.arange(-(kernel_size//2), kernel_size//2 + 1, device=device).float(),
             indexing='ij',
         )
+        with torch.no_grad():
+            for theta in thetas:
+                x_t = x * torch.cos(theta) + y * torch.sin(theta)
+                y_t = -x * torch.sin(theta) + y * torch.cos(theta)
 
-        for theta in thetas:
-            x_t = x * torch.cos(theta) + y * torch.sin(theta)
-            y_t = -x * torch.sin(theta) + y * torch.cos(theta)
+                gb = torch.exp(-(x_t**2 + (gamma * y_t)**2) / (2 * sigma**2)) * \
+                    torch.cos(2 * torch.pi * x_t / lambd)
 
-            gb = torch.exp(-(x_t**2 + (gamma * y_t)**2) / (2 * sigma**2)) * \
-                torch.cos(2 * torch.pi * x_t / lambd)
+                gb = gb / gb.abs().sum()
+                kernel = gb.to(sample.dtype).expand(c, 1, kernel_size, kernel_size)
 
-            gb = gb / gb.abs().sum()
-            kernel = gb.to(sample.dtype).expand(c, 1, kernel_size, kernel_size)
-
-            filtered = F.conv2d(sample, kernel,
-                                padding=kernel_size//2,
-                                groups=c)
-            out += filtered
+                filtered = F.conv2d(sample, kernel,
+                                    padding=kernel_size//2,
+                                    groups=c)
+                out += filtered
 
         out = out / len(thetas)
         return sample + filter_factor * out
@@ -1208,12 +1208,12 @@ class UNet2DConditionModel(
         denoised_sample = torch.fft.ifftn(sample_fft_ishifted, dim=(-2, -1)).real
         denoised_sample = denoised_sample.to(sample.dtype)
 
-        # 📌 Spatial gating using saliency map
+        # Spatial gating using saliency map
         saliency = saliency.clamp(0, 1).to(sample.dtype)
         if saliency.shape[1] == 1:
             saliency = saliency.expand(-1, c, -1, -1)
 
-        # 👇 Combine selectively by saliency
+        # Combine selectively by saliency
         result = sample * saliency + denoised_sample * (1 - saliency)
 
         return result
@@ -1438,7 +1438,7 @@ class UNet2DConditionModel(
                         sample[:, hidden_mask['down'][di]] += sample[:, hidden_mask['down'][di]] * replace_mask_ * replace_on_
                     
                 elif (isinstance(replace_on, str) and replace_on == 'freq') and replace_mask_!=1.0:
-                    print("apply fft on low, replace_mask: ", replace_mask_)
+                    # print("apply fft on low, replace_mask: ", replace_mask_)
                     cutoff_freq_ = cutoff_freq if isinstance(cutoff_freq, float) else cutoff_freq['down'][di]
                     # dual stage: apply adptive saliency
                     if saliency_fft:
@@ -1537,7 +1537,7 @@ class UNet2DConditionModel(
         #     print("down_block_res_samples[{}]".format(rs), down_block_res_samples[rs][0][0][0][:5])
         # 5. up
         ups = []
-        print("go to up block")
+        # print("go to up block")
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
@@ -1576,12 +1576,12 @@ class UNet2DConditionModel(
             else: assert("unknown type of replace_mask")
 
             if hidden_mask != None:
-                print("up block - hidden_mask is not none")
-                print("UP BLOCK replace_on TYPE/VALUE:", type(replace_on), replace_on)
-                print("UP BLOCK replace_mask", replace_mask_)
+                # print("up block - hidden_mask is not none")
+                # print("UP BLOCK replace_on TYPE/VALUE:", type(replace_on), replace_on)
+                # print("UP BLOCK replace_mask", replace_mask_)
 
                 if isinstance(replace_on, dict) or  (isinstance(replace_on, str) and replace_on == 'mean'):
-                    print("up block - replace_on = mean")
+                    # print("up block - replace_on = mean")
                     if (isinstance(replace_on, str) and replace_on == 'mean'):
                         replace_on_ = sample.mean(axis=1)
                         replace_on_ = (replace_on_-replace_on_.min())/(replace_on_.max()-replace_on_.min())
@@ -1596,7 +1596,7 @@ class UNet2DConditionModel(
                     sample = self.remove_noise_with_fourier(sample, cutoff_freq_, replace_mask_)
                     
                 elif replace_on == None:
-                    print("up block - replace_on = None")
+                    # print("up block - replace_on = None")
                     if hidden_mask['up'][i] != []:
                         if isinstance(replace_mask_, float):
                             sample[:, hidden_mask['up'][i]] *= replace_mask_
