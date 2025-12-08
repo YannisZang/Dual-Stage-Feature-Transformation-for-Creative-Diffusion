@@ -2,19 +2,20 @@
 
 <!-- Jiyeon Han* · Dahee Kwon* · Gayoung Lee · Junho Kim · Jaesik Choi  -->
 
-This is the official implementation of [**Enhancing Creative Generation on Stable Diffusion-based Models**](https://arxiv.org/abs/2503.23538), published in CVPR 2025.
+<!-- This is the official implementation of [**Enhancing Creative Generation on Stable Diffusion-based Models**](https://arxiv.org/abs/2503.23538), published in CVPR 2025. -->
 
 <!-- ## Abstract
 Recent text-to-image generative models, particularly Stable Diffusion and its distilled variants, have achieved impressive fidelity and strong text-image alignment. However, their creative capability remains constrained, as including `creative' in prompts seldom yields the desired results. In this paper, we introduce C3 (Creative Concept Catalyst), a training-free approach designed to enhance creativity in Stable Diffusion-based models. C3 selectively amplifies features during the denoising process to foster more creative outputs. We offer practical guidelines for choosing amplification factors based on two main aspects of creativity. C3 is the first study to enhance creativity in diffusion models without extensive computational costs.  -->
 
-![image](./C3-main.png)
+![image](./cup_result.png)
+![image](./chair_result.png)
 
 ## Setup
 1) To create the conda environment needed to run the code, run the following command:
 
 ```
 conda env create -f environment.yaml
-conda activate dftd
+conda activate C3
 ```
 
 <!-- 2) You need to use CLIP code from "https://github.com/openai/CLIP":
@@ -62,14 +63,5 @@ To change the configuration, you can directly modify `src/default.cfg` or use `s
 
 
 ## Reference
-We are basing on the paper:
-```
-@inproceedings{han2025enhancing,
-  title={Enhancing creative generation on stable diffusion-based models},
-  author={Han, Jiyeon and Kwon, Dahee and Lee, Gayoung and Kim, Junho and Choi, Jaesik},
-  booktitle={Proceedings of the Computer Vision and Pattern Recognition Conference},
-  pages={28609--28618},
-  year={2025}
-}
-```
+We are basing on the paper: [**Enhancing Creative Generation on Stable Diffusion-based Models**](https://arxiv.org/abs/2503.23538), published in CVPR 2025.
 
