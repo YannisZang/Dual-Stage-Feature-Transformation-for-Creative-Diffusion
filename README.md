@@ -54,7 +54,7 @@ Now, you are ready.
  ## Usage
  1) You can try our method by manually setting the amplification factors in a simple ipython notebook `image_generation_examples.ipynb`.
 
- 2) You can run experiments in `experiment.ipynb` by only change obj. 
+ 2) You can run experiments in `experiment.ipynb` by only change "obj". 
 <!-- ```
 bash scripts/amplification_factors.sh
 ``` -->
