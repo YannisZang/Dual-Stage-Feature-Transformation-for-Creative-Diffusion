@@ -12,7 +12,7 @@ Recent text-to-image generative models, particularly Stable Diffusion and its di
 ![image](./cup_result.svg)
 
 ## Approach
-
+![image](./approach.svg)
 
 ## Setup
 1) To create the conda environment needed to run the code, run the following command:
